@@ -52,49 +52,85 @@ def _get_encoder(config: dict) -> str:
 # GStreamer pipeline builders
 # ---------------------------------------------------------------------------
 
-def _build_pipeline_string(source: str | None, encoder: str, loop: bool = True) -> str:
-    """Build a GStreamer pipeline string for a given source.
-
-    Supported sources:
-      - None / empty      → color-bar test pattern
-      - /path/to/file.mp4 → local file via filesrc
-      - http(s)://...     → HTTP stream via souphttpsrc
-    """
+def _build_test_pattern_pipeline(encoder: str) -> str:
+    """Return a parse_launch string for the color-bar test pattern."""
     pay = "rtph264pay name=pay0 config-interval=1 pt=96"
-
-    if not source:
-        return (
-            "videotestsrc pattern=bar horizontal-speed=2 "
-            "background-color=9228238 foreground-color=4080751 "
-            f"! {encoder} ! queue ! {pay}"
-        )
-
-    if source.startswith("http://") or source.startswith("https://"):
-        src = f'souphttpsrc location="{source}" is-live=false'
-    else:
-        src = f'filesrc location="{source}"'
-
-    # Use decodebin to handle any container/codec (MKV/HEVC, MP4/H264, etc.)
-    pipeline = (
-        f"{src} ! decodebin ! queue ! videoconvert ! "
-        f"{encoder} ! queue ! {pay}"
+    return (
+        "videotestsrc pattern=bar horizontal-speed=2 "
+        "background-color=9228238 foreground-color=4080751 "
+        f"! {encoder} ! queue ! {pay}"
     )
-    return pipeline
 
 
 class StreamMediaFactory(GstRtspServer.RTSPMediaFactory):
-    """RTSP media factory for a single stream source."""
+    """RTSP media factory for a single stream source.
+
+    For test patterns, uses parse_launch (static pipeline).
+    For file/HTTP sources, builds the pipeline programmatically
+    with dynamic pad linking to handle decodebin correctly.
+    """
 
     def __init__(self, source: str | None, encoder: str, loop: bool = True):
         super().__init__()
         self._source = source
         self._encoder = encoder
         self._loop = loop
-        self._pipeline_str = _build_pipeline_string(source, encoder, loop)
 
     def do_create_element(self, url):
-        log.info("launching pipeline: %s", self._pipeline_str)
-        return Gst.parse_launch(self._pipeline_str)
+        if not self._source:
+            pipeline_str = _build_test_pattern_pipeline(self._encoder)
+            log.info("launching test-pattern pipeline: %s", pipeline_str)
+            return Gst.parse_launch(pipeline_str)
+
+        log.info("launching pipeline for: %s", self._source)
+        return self._build_dynamic_pipeline()
+
+    def _build_dynamic_pipeline(self):
+        """Build a pipeline with dynamic pad linking for decodebin."""
+        pipeline = Gst.Pipeline.new("camera-mock-pipeline")
+
+        if self._source.startswith("http://") or self._source.startswith("https://"):
+            src = Gst.ElementFactory.make("souphttpsrc", "src")
+            src.set_property("location", self._source)
+            src.set_property("is-live", False)
+        else:
+            src = Gst.ElementFactory.make("filesrc", "src")
+            src.set_property("location", self._source)
+
+        decodebin = Gst.ElementFactory.make("decodebin", "decode")
+        queue = Gst.ElementFactory.make("queue", "queue")
+        convert = Gst.ElementFactory.make("videoconvert", "convert")
+        encoder_str = self._encoder.split()[0]
+        encoder_props = self._encoder.split()[1:]
+        enc = Gst.ElementFactory.make(encoder_str, "enc")
+        for prop in encoder_props:
+            if "=" in prop:
+                k, v = prop.split("=", 1)
+                try:
+                    enc.set_property(k.replace("-", "_"), v)
+                except Exception:
+                    pass
+        pay = Gst.ElementFactory.make("rtph264pay", "pay0")
+        pay.set_property("config-interval", 1)
+        pay.set_property("pt", 96)
+
+        for el in [src, decodebin, queue, convert, enc, pay]:
+            pipeline.add(el)
+
+        src.link(decodebin)
+        queue.link(convert)
+        convert.link(enc)
+        enc.link(pay)
+
+        def on_pad_added(element, pad):
+            caps = pad.get_current_caps() or pad.query_caps(None)
+            if caps and "video" in caps.to_string():
+                sink_pad = queue.get_static_pad("sink")
+                if not sink_pad.is_linked():
+                    pad.link(sink_pad)
+
+        decodebin.connect("pad-added", on_pad_added)
+        return pipeline
 
 # ---------------------------------------------------------------------------
 # ONVIF / WS-Discovery helpers
