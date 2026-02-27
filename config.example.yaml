@@ -1,0 +1,52 @@
+# camera-mock multi-stream configuration
+# Copy to config.yaml and adjust for your environment.
+
+# Network interface for ONVIF/WS-Discovery (required for ONVIF features)
+interface: eth0
+
+# RTSP server port
+port: 8554
+
+# ONVIF / WS-Discovery services
+onvif:
+  enabled: true
+  firmware_version: "1.0"
+
+# Video encoder selection
+#   auto        — prefer v4l2h264enc (Pi HW), fall back to x264enc
+#   v4l2h264enc — force Pi 5 hardware encoder
+#   x264enc     — force software encoder
+encoder: auto
+
+# Jellyfin integration (optional)
+# When configured, streams are auto-discovered from a collection or playlist.
+# Each item becomes an RTSP mount point: /stream1, /stream2, ...
+jellyfin:
+  url: http://localhost:8096
+  api_key: "${JELLYFIN_API_KEY}"
+  # Discover videos from a named collection (library, playlist, or boxset)
+  collection: "Camera Feeds"
+  # Or use a collection/playlist ID directly:
+  # collection_id: "abc123def456"
+  # Maximum number of streams to create from auto-discover
+  max_streams: 8
+  # Loop playback (restart when video ends)
+  loop: true
+
+# Explicit stream definitions (optional)
+# These are merged with auto-discovered streams.
+# If a mount path collides, the explicit definition wins.
+streams:
+  # Local file example
+  # - name: lobby-cam
+  #   source: /media/videos/lobby.mp4
+  #   mount: /stream1
+
+  # Jellyfin direct stream URL example
+  # - name: entrance-cam
+  #   source: http://localhost:8096/Videos/<itemId>/stream?static=true&api_key=<key>
+  #   mount: /stream2
+
+  # Color bars (default test pattern, no source needed)
+  # - name: test-pattern
+  #   mount: /test

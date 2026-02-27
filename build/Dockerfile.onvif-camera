@@ -1,34 +1,23 @@
-# Build from root of repo with `docker build -t onvif-build -f ./build/Dockerfile.onvif-camera .`
-FROM ubuntu:22.04 as build
-WORKDIR /
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get upgrade -y
-RUN apt-get install \
-    flex bison byacc make m4 autoconf unzip \
-    git g++ wget -y
-
-ADD . /onvif-camera-mock/
-
-RUN cd /onvif-camera-mock && \
-    cd wsdd && \
-    make release
-
-RUN cd /onvif-camera-mock && \
-    cd onvif_srvd && \
-    make release
-
-# Deployment container
+# RTSP-only image (no ONVIF/WS-Discovery C binaries — saves ~1hr build time)
+# ONVIF binaries are only needed for camera discovery on LAN; use the Nix
+# flake for native Pi deployment with full ONVIF support.
 FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
-    apt-get install sudo iproute2 \
-    python3-gi \
-    libgstrtspserver-1.0-dev gstreamer1.0-rtsp \
-    gstreamer1.0-rtsp gstreamer1.0-plugins-ugly  -y
+    apt-get install -qy --no-install-recommends \
+    iproute2 \
+    python3-gi python3-yaml \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
+    gstreamer1.0-rtsp libgstrtspserver-1.0-dev \
+    gir1.2-gst-rtsp-server-1.0 \
+    libsoup2.4-1 gstreamer1.0-libav && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /onvif-camera-mock /onvif-camera-mock
+COPY main.py jellyfin.py config.example.yaml /onvif-camera-mock/
 RUN chmod +x /onvif-camera-mock/main.py
 EXPOSE 8554
-EXPOSE 1000
-CMD ["/onvif-camera-mock/main.py", "eth0", "/onvif-camera-mock"]
-ENTRYPOINT ["python3"]
+# Config mode: mount config.yaml and pass --config /path/to/config.yaml
+# Legacy mode: pass interface as first arg (ONVIF won't start without binaries)
+CMD ["--config", "/onvif-camera-mock/config.example.yaml"]
+ENTRYPOINT ["python3", "/onvif-camera-mock/main.py"]

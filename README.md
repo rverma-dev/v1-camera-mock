@@ -1,14 +1,105 @@
 ## Overview
 
-This project provides a set of tools and instructions for mocking an ONVIF-compliant IP camera and passing an RTSP stream to simulate a live video stream. It can be run as a Docker container or built locally. Users can also mount a volume or folder with the container to simulate the RTSP camera with the mounted video file.
+Multi-stream ONVIF camera simulator with RTSP feeds. Supports color bars, local video files, HTTP sources, and **Jellyfin auto-discovery** for realistic multi-camera setups.
 
 > [!NOTE]  
-> This project started as a fork from [kate-goldenring/onvif-camera-mocking](https://github.com/kate-goldenring/onvif-camera-mocking)
+> Fork of [kate-goldenring/onvif-camera-mocking](https://github.com/kate-goldenring/onvif-camera-mocking) with multi-stream, Jellyfin integration, Nix packaging, and Pi 5 HW encoder support.
 
-If you want to use the container without building it, you can download it using the following command:
+### Quick Start
+
+**Docker (GHCR):**
 ```bash
-docker pull winiotsaleskit.azurecr.io/onvif-camera-mocking:latest
+docker pull ghcr.io/rverma-dev/v1-camera-mock:latest
+docker run -p 8554:8554 ghcr.io/rverma-dev/v1-camera-mock:latest
 ```
+
+**Nix (native on Pi 5 / Linux):**
+```bash
+nix run github:rverma-dev/v1-camera-mock -- --config config.yaml
+```
+
+### Multi-Stream Mode
+
+Create a `config.yaml` (see [config.example.yaml](./config.example.yaml)):
+
+```yaml
+port: 8554
+encoder: auto  # auto | v4l2h264enc | x264enc
+
+# Auto-discover from Jellyfin
+jellyfin:
+  url: http://localhost:8096
+  api_key: "${JELLYFIN_API_KEY}"
+  collection: "The Pit"
+  max_streams: 4
+
+# Or explicit streams
+streams:
+  - name: lobby
+    source: /media/lobby.mp4
+    mount: /stream5
+```
+
+Run with config:
+```bash
+python3 main.py --config config.yaml
+# or
+JELLYFIN_API_KEY=your-key camera-mock --config config.yaml
+```
+
+Each video becomes an RTSP mount point:
+- `rtsp://pi:8554/stream1` → Episode 1
+- `rtsp://pi:8554/stream2` → Episode 2
+- `rtsp://pi:8554/stream3` → Episode 3
+- `rtsp://pi:8554/stream4` → Episode 4
+
+### Home Manager Module
+
+For Pi OS + Determinate Nix + Home Manager, add to your `flake.nix`:
+
+```nix
+{
+  inputs.camera-mock.url = "github:rverma-dev/v1-camera-mock";
+
+  # In your home-manager config:
+  home-manager.users.youruser = {
+    imports = [ camera-mock.homeManagerModules.default ];
+
+    services.camera-mock = {
+      enable = true;
+      settings = {
+        port = 8554;
+        interface = "eth0";
+        encoder = "auto";  # auto-detects Pi 5 v4l2h264enc
+        jellyfin = {
+          url = "http://localhost:8096";
+          api_key = "\${JELLYFIN_API_KEY}";
+          collection = "The Pit";
+          max_streams = 4;
+        };
+      };
+      environmentFile = "/home/youruser/.config/camera-mock/env";
+    };
+  };
+}
+```
+
+This creates a **user-level systemd service** (`systemctl --user status camera-mock`).
+
+### Pi 5 Hardware Encoding
+
+When `encoder: auto`, the simulator auto-detects Pi 5's V4L2 H264 encoder (`v4l2h264enc`). Falls back to software `x264enc` on other platforms.
+
+### Legacy Mode
+
+The original env-var interface still works:
+```bash
+INTERFACE=eth0 MP4FILE=/path/to/video.mp4 python3 main.py
+```
+
+---
+
+## Original Documentation
 
 ## Prerequsites
 
