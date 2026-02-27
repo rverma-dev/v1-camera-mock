@@ -74,7 +74,7 @@ def _build_pipeline_string(source: str | None, encoder: str, loop: bool = True) 
 
     return (
         f"{src} ! qtdemux name=demux "
-        f"demux.video_0 ! queue ! h264parse ! {pay}"
+        f"demux.video_0 ! queue ! {pay}"
     )
 
 
