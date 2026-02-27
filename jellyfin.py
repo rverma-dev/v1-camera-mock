@@ -135,9 +135,17 @@ def discover_streams(config: dict) -> list[dict]:
         source = None
 
         if transcode_dir and local_path:
+            import re
             base_name = os.path.splitext(os.path.basename(local_path))[0]
-            for ext in (".mp4", ".mkv", ".mov"):
-                candidate = os.path.join(transcode_dir, base_name + ext)
+            # Also try short name: Series.SxxExx.720p.H264.ext
+            ep_match = re.search(r'(S\d+E\d+)', base_name, re.IGNORECASE)
+            series_short = re.sub(r'\.S\d+E\d+.*$', '', base_name, flags=re.IGNORECASE)
+            short_name = f"{series_short}.{ep_match.group(1)}.720p.H264" if ep_match else None
+            candidates = []
+            for name in ([short_name] if short_name else []) + [base_name]:
+                for ext in (".mp4", ".mkv", ".mov"):
+                    candidates.append(os.path.join(transcode_dir, name + ext))
+            for candidate in candidates:
                 if os.path.isfile(candidate):
                     log.info("stream%d: using transcoded file %s", i, candidate)
                     source = candidate
