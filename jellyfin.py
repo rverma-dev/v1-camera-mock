@@ -129,31 +129,23 @@ def discover_streams(config: dict) -> list[dict]:
             f"?static=true&api_key={api_key}"
         )
 
-        # Check for a pre-transcoded file in transcode_dir first
         local_path = item.get("Path")
-        transcode_dir = jf.get("transcode_dir")
         source = None
 
-        if transcode_dir and local_path:
-            import re
-            base_name = os.path.splitext(os.path.basename(local_path))[0]
-            # Also try short name: Series.SxxExx.720p.H264.ext
-            ep_match = re.search(r'(S\d+E\d+)', base_name, re.IGNORECASE)
-            series_short = re.sub(r'\.S\d+E\d+.*$', '', base_name, flags=re.IGNORECASE)
-            short_name = f"{series_short}.{ep_match.group(1)}.720p.H264" if ep_match else None
-            candidates = []
-            for name in ([short_name] if short_name else []) + [base_name]:
+        if local_path:
+            if os.path.isfile(local_path):
+                log.info("stream%d: using local file %s", i, local_path)
+                source = local_path
+            else:
+                # Original file may have been replaced by a transcoded version
+                # (e.g. .mkv → .mp4 in same directory)
+                base = os.path.splitext(local_path)[0]
                 for ext in (".mp4", ".mkv", ".mov"):
-                    candidates.append(os.path.join(transcode_dir, name + ext))
-            for candidate in candidates:
-                if os.path.isfile(candidate):
-                    log.info("stream%d: using transcoded file %s", i, candidate)
-                    source = candidate
-                    break
-
-        if source is None and local_path and os.path.isfile(local_path):
-            log.info("stream%d: using local file %s", i, local_path)
-            source = local_path
+                    candidate = base + ext
+                    if os.path.isfile(candidate):
+                        log.info("stream%d: using transcoded file %s", i, candidate)
+                        source = candidate
+                        break
 
         if source is None:
             log.info("stream%d: using HTTP stream for '%s'", i, item_name)
