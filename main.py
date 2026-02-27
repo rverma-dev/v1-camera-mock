@@ -75,10 +75,8 @@ def _build_pipeline_string(source: str | None, encoder: str, loop: bool = True) 
         src = f'filesrc location="{source}"'
 
     # Use decodebin to handle any container/codec (MKV/HEVC, MP4/H264, etc.)
-    # Scale to 1280x720 to keep CPU load manageable across multiple streams.
     pipeline = (
         f"{src} ! decodebin ! queue ! videoconvert ! "
-        f"videoscale ! capsfilter caps=\"video/x-raw,width=1280,height=720\" ! "
         f"{encoder} ! queue ! {pay}"
     )
     return pipeline
