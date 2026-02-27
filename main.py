@@ -74,12 +74,12 @@ def _build_pipeline_string(source: str | None, encoder: str, loop: bool = True) 
     else:
         src = f'filesrc location="{source}"'
 
-    # For files that are already H264 in an MP4 container, use qtdemux
-    # to extract the video track directly (zero-copy, no re-encode).
-    # For non-H264 or raw sources, fall back to decodebin + re-encode.
+    # Use decodebin to handle any container/codec (MKV/HEVC, MP4/H264, etc.)
+    # Scale to 1280x720 to keep CPU load manageable across multiple streams.
     pipeline = (
-        f"{src} ! qtdemux name=demux "
-        f"demux.video_0 ! queue ! h264parse ! {pay}"
+        f"{src} ! decodebin ! queue ! videoconvert ! "
+        f"videoscale ! video/x-raw,width=1280,height=720 ! "
+        f"{encoder} ! queue ! {pay}"
     )
     return pipeline
 
