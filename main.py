@@ -14,9 +14,7 @@ Usage:
 import argparse
 import logging
 import os
-import shutil
 import subprocess
-import sys
 
 import gi
 gi.require_version("Gst", "1.0")
