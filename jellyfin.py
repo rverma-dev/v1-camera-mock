@@ -129,12 +129,25 @@ def discover_streams(config: dict) -> list[dict]:
             f"?static=true&api_key={api_key}"
         )
 
-        # Check if local file path is accessible (for native Pi deployment)
+        # Check for a pre-transcoded file in transcode_dir first
         local_path = item.get("Path")
-        if local_path and os.path.isfile(local_path):
+        transcode_dir = jf.get("transcode_dir")
+        source = None
+
+        if transcode_dir and local_path:
+            base_name = os.path.splitext(os.path.basename(local_path))[0]
+            for ext in (".mp4", ".mkv", ".mov"):
+                candidate = os.path.join(transcode_dir, base_name + ext)
+                if os.path.isfile(candidate):
+                    log.info("stream%d: using transcoded file %s", i, candidate)
+                    source = candidate
+                    break
+
+        if source is None and local_path and os.path.isfile(local_path):
             log.info("stream%d: using local file %s", i, local_path)
             source = local_path
-        else:
+
+        if source is None:
             log.info("stream%d: using HTTP stream for '%s'", i, item_name)
             source = source_url
 
